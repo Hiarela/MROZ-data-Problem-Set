@@ -1,0 +1,251 @@
+---
+title: "T2"
+author: "Hiarela"
+date: "2023-08-19"
+output: pdf_document
+---
+
+# Definir el directorio
+```{r}
+directorio <- "C:/Users/Hiare/OneDrive/Escritorio/UChile/PRIMAVERA 2023/Métodos Cuantitativos II (AYU)/Tarea 2"
+datos <- file.path(directorio, "/Datos")
+figuras <- file.path(directorio, "Figuras")
+tablas <- file.path(directorio, "Tablas")
+setwd(paste0(directorio))
+getwd()
+```
+
+# Paquetes
+```{r}
+library(readxl)
+library(dplyr)
+library(knitr)
+library(xtable)
+library(stargazer)
+library(ggplot2)
+library(margins)
+library(lmtest)
+      library(lrmest)
+      library(tseries)
+      library(nortest)
+      library(car)
+      library(sandwich)
+      library(lattice)
+      library(viridisLite)
+      library(leaps)
+      library(ROCR)
+      library(mfx)
+library(caret)
+
+PackageNames <- c("tidyverse", "stargazer", "magrittr", "margins", "caret")
+for(i in PackageNames){
+  if(!require(i, character.only = T)){
+    install.packages(i, dependencies = T)
+    require(i, character.only = T)
+  }
+}
+
+```
+
+
+
+# Cargamos la base
+```{r}
+MROZ <- read.csv("Datos/MROZ.csv")
+```
+
+
+# 1. Genere un gráfico de barras que ilustre cóomo varía la participación laboral de mujeres casadas en Estados Unidos en 1975 en relación a la cantidad de hijos menores de 6 años. Cada barra en el gráfico deberá representar la proporción de mujeres que trabajan y no trabajan, con el eje horizontal mostrando diferentes categorías de cantidad de hijos menores de 6 años y el eje vertical expresado en porcentaje.
+```{r}
+
+# Calcular los porcentajes
+MROZ_porcentaje <- MROZ %>%
+  group_by(kidslt6, inlf) %>%
+  summarize(count = n()) %>%
+  ungroup() %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Crear el gráfico
+ggplot(data = MROZ_porcentaje, aes(x = factor(kidslt6), y = percentage, fill = factor(inlf))) +
+  geom_bar(position = "dodge", stat = "identity") +
+  labs(title = "Comparación de Participación Laboral por Cantidad de Hijos Menores de 6 Años",
+       x = "Cantidad de Hijos Menores de 6 Años",
+       y = "Porcentaje (%)") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "red"),
+                    labels = c("No Trabaja", "Trabaja")) +
+  theme_minimal() +
+  scale_x_discrete(labels = c("0 hijos", "1 hijo", "2 hijos", "3 hijos", "4 hijos")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+
+pdf("Figuras/grafico1.pdf",width = 8.5,height = 5)
+par(ask=F)
+ggplot(data = MROZ_porcentaje, aes(x = factor(kidslt6), y = percentage, fill = factor(inlf))) +
+  geom_bar(position = "dodge", stat = "identity") +
+  labs(title = "Comparación de Participación Laboral por Cantidad de Hijos Menores de 6 Años",
+       x = "Cantidad de Hijos Menores de 6 Años",
+       y = "Porcentaje (%)") +
+  scale_fill_manual(values = c("0" = "blue", "1" = "red"),
+                    labels = c("No Trabaja", "Trabaja")) +
+  theme_minimal() +
+  scale_x_discrete(labels = c("0 hijos", "1 hijo", "2 hijos", "3 hijos", "4 hijos")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+dev.off()
+
+```
+
+# 2. Estime un modelo de probabilidad lineal, en el cual la variable dependiente sea la participación laboral de las mujeres casadas, que es una variable dicotómica que toma el valor 1 si la mujer trabaja y 0 si no. La variable explicativa principal es el ingreso no laboral de la familia (nwifeinc), que mide el efecto de la renta sobre la decisión laboral. Esta variable representa la suma de los ingresos del esposo y de otras fuentes distintas al trabajo de la mujer. Además incorpore como regresores: el nivel educativo, la experiencia laboral, la edad y el número de hijos menores de 6 años. Presente los resultados en una tabla e interprete los coeficientes estimados.
+```{r}
+# Linear probability model (LPM) 
+LPM <- lm(inlf ~ nwifeinc + educ + exper + age + kidslt6, MROZ)
+
+stargazer(LPM,align=TRUE, type="latex")
+
+```
+
+# 3. Calcule e interprete los efectos marginales del modelo de probabilidad lineal estimado. Además, comente la significancia de los efectos marginales. Muestre los resultados en una tabla.
+```{r}
+LPM_margins <- coef(LPM)
+
+stargazer(LPM_margins,align=TRUE, type="latex")
+```
+
+# 4. Estime un modelo Probit para la participación laboral de las mujeres casadas en Estados Unidos utilizando todas las variables explicativas mencionadas en la pregunta anterior, y presente sus estimaciones en una tabla. Discuta e interprete sus resultados para las variables.
+```{r}
+# Probit model 
+Probit <- glm(formula = inlf ~ nwifeinc + educ + exper + age + kidslt6, 
+              family = binomial(link = "probit"), 
+              data = MROZ)
+
+stargazer(Probit,align=TRUE, type="latex")
+
+```
+
+# 5. En base al modelo Probit estimado, calcule e interprete los efectos marginales de cada variable, evaluados en la media, y comente si son significativos estadísticamente. Presente los resultados en una tabla.
+```{r}
+
+# Calcular los efectos marginales a la media
+
+Mean_probit <- model.frame(Probit) %>% 
+  map_df(mean) # mean of independent variables
+
+# Probit - marginal effect at the mean
+Probit.atmean <- margins(Probit, at = Mean_probit)
+Probit_margins <- summary(Probit.atmean)
+stargazer(Probit_margins$AME,align=TRUE, type="latex")
+
+```
+
+# 6. Estime un modelo Logit, que incluya las mismas variables que los modelos anteriores. Presente los resultados en una tabla, interprete los coeficientes estimados y comente la significancia del modelo.
+```{r}
+# Logit model 
+Logit <- glm(formula = inlf ~ nwifeinc + educ + exper + age + kidslt6, 
+              family = binomial(link = "logit"), 
+              data = MROZ)
+
+stargazer(Logit,align=TRUE, type="latex")
+
+```
+
+# 7. Calcule e interprete los efectos marginales del modelo Logit estimado. Muestre los resultados en una tabla.
+```{r}
+# Calcular los efectos marginales a la media
+
+
+Mean_Logit <- model.frame(Logit) %>% 
+  map_df(mean) # mean of independent variables
+
+Logit.atmean <- margins(Logit, at = Mean_Logit)
+Logit_margins <- summary(Logit.atmean)
+
+stargazer(Logit_margins$AME,align=TRUE, type="latex")
+
+```
+
+
+# 8. Utilizando el estadístico pseudo-$R^{2}$ y la matriz de confusión para predecir la participación o no de las mujeres casadas en el mercado laboral de Estados Unidos, ¿cuál modelo se ajusta mejor a los datos y por qué?
+```{r}
+
+MROZ$inlf <- as.factor(MROZ$inlf)
+MROZ$nwifeinc <- as.factor(MROZ$nwifeinc)
+MROZ$educ <- as.factor(MROZ$educ)
+MROZ$exper <- as.factor(MROZ$exper)
+MROZ$age <- as.factor(MROZ$age)
+MROZ$kidslt6 <- as.factor(MROZ$kidslt6)
+
+# MODELO DE PROBABILIDAD LINEAL 
+
+tabla1<-table(true=MROZ$inlf,pred=round(fitted(LPM)))
+sum(diag(tabla1))/sum(tabla1)
+
+matriz1 <- confusionMatrix(tabla1)
+
+xtable(matriz1$table)
+
+# MODELO PROBIT
+
+tabla2<-table(true=MROZ$inlf,pred=round(fitted(Probit)))
+sum(diag(tabla2))/sum(tabla2)
+
+matriz2<- confusionMatrix(tabla2)
+
+xtable(matriz2$table)
+
+# MODELO LOGIT
+
+tabla3<-table(true=MROZ$inlf,pred=round(fitted(Logit)))
+sum(diag(tabla3))/sum(tabla3)
+
+matriz3<- confusionMatrix(tabla3)
+
+xtable(matriz3$table)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
